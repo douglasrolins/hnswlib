@@ -2,7 +2,6 @@ package com.github.jelmerk.knn.hnsw;
 
 import com.github.jelmerk.knn.*;
 import com.github.jelmerk.knn.util.*;
-import com.github.jelmerk.knn.util.BitSet;
 import org.eclipse.collections.api.list.primitive.MutableIntList;
 import org.eclipse.collections.api.map.primitive.MutableObjectIntMap;
 import org.eclipse.collections.api.map.primitive.MutableObjectLongMap;
@@ -69,9 +68,9 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 
 	private ReentrantLock globalLock;
 
-	private GenericObjectPool<BitSet> visitedBitSetPool;
+    private GenericObjectPool<ArrayBitSet> visitedBitSetPool;
 
-	private BitSet excludedCandidates;
+    private ArrayBitSet excludedCandidates;
 
 	private ExactView exactView;
 
@@ -106,7 +105,7 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 		this.visitedBitSetPool = new GenericObjectPool<>(() -> new ArrayBitSet(this.maxItemCount),
 				Runtime.getRuntime().availableProcessors());
 
-		this.excludedCandidates = new SynchronizedBitSet(new ArrayBitSet(this.maxItemCount));
+        this.excludedCandidates = new ArrayBitSet(this.maxItemCount);
 
 		this.exactView = new ExactView();
 	}
@@ -282,7 +281,9 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 
 			int newNodeId = nodeCount++;
 
-			excludedCandidates.add(newNodeId);
+            synchronized (excludedCandidates) {
+    			excludedCandidates.add(newNodeId);
+            }
 
 			Node<TItem> newNode = new Node<>(newNodeId, connections, item, false);
 
@@ -382,21 +383,20 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 							this.entryPoint = newNode;
 						}
 
-						return true;
-					}
-				}
-			} finally
-			{
-				excludedCandidates.remove(newNodeId);
-			}
-		} finally
-		{
-			if (globalLock.isHeldByCurrentThread())
-			{
-				globalLock.unlock();
-			}
-		}
-	}
+                        return true;
+                    }
+                }
+            } finally {
+                synchronized (excludedCandidates) {
+                    excludedCandidates.remove(newNodeId);
+                }
+            }
+        } finally {
+            if (globalLock.isHeldByCurrentThread()) {
+                globalLock.unlock();
+            }
+        }
+    }
 
 	private void mutuallyConnectNewElement(Node<TItem> newNode,
 			PriorityQueue<NodeIdAndDistance<TDistance>> topCandidates, int level)
@@ -414,10 +414,11 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 		{
 			int selectedNeighbourId = topCandidates.poll().nodeId;
 
-			if (excludedCandidates.contains(selectedNeighbourId))
-			{
-				continue;
-			}
+            synchronized (excludedCandidates) {
+                if (excludedCandidates.contains(selectedNeighbourId)) {
+                    continue;
+                }
+            }
 
 			newItemConnections.add(selectedNeighbourId);
 
@@ -580,14 +581,38 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 			results.add(0, new SearchResult<>(nodes.get(pair.nodeId).item, pair.distance, maxValueDistanceComparator));
 		}
 
-		return results;
-	}
+        return results;
+    }
+
+    /**
+     * Changes the maximum capacity of the index.
+     * @param newSize new size of the index
+     */
+    public void resize(int newSize) {
+        globalLock.lock();
+        try {
+            this.maxItemCount = newSize;
+
+            this.visitedBitSetPool = new GenericObjectPool<>(() -> new ArrayBitSet(this.maxItemCount),
+                    Runtime.getRuntime().availableProcessors());
+
+            AtomicReferenceArray<Node<TItem>> newNodes = new AtomicReferenceArray<>(newSize);
+            for(int i = 0; i < this.nodes.length(); i++) {
+                newNodes.set(i, this.nodes.get(i));
+            }
+            this.nodes = newNodes;
+
+            this.excludedCandidates = new ArrayBitSet(this.excludedCandidates, newSize);
+        } finally {
+            globalLock.unlock();
+        }
+    }
 
 	private PriorityQueue<NodeIdAndDistance<TDistance>> searchBaseLayer(Node<TItem> entryPointNode, TVector destination,
 			int k, int layer)
 	{
 
-		BitSet visitedBitSet = visitedBitSetPool.borrowObject();
+        ArrayBitSet visitedBitSet = visitedBitSetPool.borrowObject();
 
 		try
 		{
@@ -1250,13 +1275,13 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 		int entrypointNodeId = ois.readInt();
 		this.entryPoint = entrypointNodeId == -1 ? null : nodes.get(entrypointNodeId);
 
-		this.globalLock = new ReentrantLock();
-		this.visitedBitSetPool = new GenericObjectPool<>(() -> new ArrayBitSet(this.maxItemCount),
-				Runtime.getRuntime().availableProcessors());
-		this.excludedCandidates = new SynchronizedBitSet(new ArrayBitSet(this.maxItemCount));
-		this.locks = new HashMap<>();
-		this.exactView = new ExactView();
-	}
+        this.globalLock = new ReentrantLock();
+        this.visitedBitSetPool = new GenericObjectPool<>(() -> new ArrayBitSet(this.maxItemCount),
+                Runtime.getRuntime().availableProcessors());
+        this.excludedCandidates = new ArrayBitSet(this.maxItemCount);
+        this.locks = new HashMap<>();
+        this.exactView = new ExactView();
+    }
 
 	private void writeMutableObjectIntMap(ObjectOutputStream oos, MutableObjectIntMap<TId> map) throws IOException
 	{
