@@ -850,7 +850,7 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 			TVector destination, int efs, int layer, TDistance ths)
 	{
 
-		BitSet visitedBitSet = visitedBitSetPool.borrowObject();
+		ArrayBitSet visitedBitSet = visitedBitSetPool.borrowObject();
 
 		try
 		{
@@ -965,7 +965,7 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 			TVector destination, int efs, int layer, TDistance ths)
 	{
 
-		BitSet visitedBitSet = visitedBitSetPool.borrowObject();
+		ArrayBitSet visitedBitSet = visitedBitSetPool.borrowObject();
 
 		try
 		{
