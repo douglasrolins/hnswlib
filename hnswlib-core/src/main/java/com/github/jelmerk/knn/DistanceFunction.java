@@ -19,5 +19,10 @@ public interface DistanceFunction<TVector, TDistance> extends Serializable {
      * @return The distance between items.
      */
     TDistance distance(TVector u, TVector v);
+    
+    default TDistance distanceL2(TVector u, TVector v, TDistance t)
+	{
+		return null;
+	}
 
 }

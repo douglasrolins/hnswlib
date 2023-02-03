@@ -317,6 +317,27 @@ public final class DistanceFunctions {
             double similarity = dot / (Math.sqrt(nru) * Math.sqrt(nrv));
             return 1 - similarity;
         }
+        
+        @Override
+        public Double distanceL2(double[] u, double[] v, Double ths) {
+            double dot = 0.0f;
+            double nru = 0.0f;
+            double nrv = 0.0f;
+            //double l = u.length/1.6;
+            //ths = 1 - ths;
+            for (int i = 0; i < u.length; i++) {
+                dot += u[i] * v[i];
+                nru += u[i] * u[i];
+                nrv += v[i] * v[i];
+               
+                //filter l2norm
+                //if ( i > l && (dot + (nru * nrv) < ths) ) {return 1.0;};  
+                	 
+            }
+            
+            double similarity = dot / (Math.sqrt(nru) * Math.sqrt(nrv));
+            return 1 - similarity; 
+        }
     }
 
     /**
